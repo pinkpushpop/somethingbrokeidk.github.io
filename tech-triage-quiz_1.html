@@ -1,0 +1,1038 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Something Broke, IDK — A Plain-Language Tech Triage</title>
+<style>
+  :root{
+    --bg: #EEF1EE;
+    --ink: #1C2B27;
+    --ink-soft: #4C5D57;
+    --trail: #B9C7BE;
+    --stone: #FFFFFF;
+    --stone-border: #D3DCD5;
+    --path-active: #3D6B63;
+    --path-done: #7C9A8E;
+    --amber: #C98A3B;
+    --amber-deep: #9C6423;
+    --card-shadow: 0 1px 2px rgba(28,43,39,0.06), 0 8px 24px rgba(28,43,39,0.06);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family: 'Iowan Old Style','Palatino Linotype',Georgia,serif;
+    min-height:100vh;
+    display:flex;
+    align-items:flex-start;
+    justify-content:center;
+    padding:32px 16px 64px;
+  }
+  .app{
+    width:100%;
+    max-width:640px;
+  }
+  .masthead{
+    margin-bottom:28px;
+    text-align:left;
+  }
+  .eyebrow{
+    font-family:'Courier New',monospace;
+    font-size:11px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--path-active);
+    margin:0 0 8px;
+  }
+  h1{
+    font-family: Georgia, 'Iowan Old Style', serif;
+    font-weight:600;
+    font-size:32px;
+    line-height:1.15;
+    margin:0 0 10px;
+    letter-spacing:-0.01em;
+  }
+  .sub{
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size:15px;
+    color:var(--ink-soft);
+    line-height:1.5;
+    margin:0;
+    max-width:52ch;
+  }
+
+  /* trail progress */
+  .trail{
+    display:flex;
+    align-items:center;
+    gap:6px;
+    margin:26px 0 22px;
+  }
+  .trail-seg{
+    flex:1;
+    height:3px;
+    background:var(--trail);
+    border-radius:2px;
+    position:relative;
+    overflow:hidden;
+  }
+  .trail-seg .fill{
+    position:absolute; inset:0;
+    background:var(--path-active);
+    transform:scaleX(0);
+    transform-origin:left;
+    transition:transform .5s ease;
+  }
+  .trail-seg.done .fill{transform:scaleX(1); background:var(--path-done);}
+  .trail-seg.active .fill{transform:scaleX(1);}
+  .stone{
+    width:11px;height:11px;border-radius:50%;
+    background:var(--stone);
+    border:2px solid var(--trail);
+    flex:none;
+    transition:border-color .3s ease, background .3s ease;
+  }
+  .stone.done{border-color:var(--path-done); background:var(--path-done);}
+  .stone.active{border-color:var(--path-active); background:var(--path-active); box-shadow:0 0 0 4px rgba(61,107,99,0.15);}
+
+  .step-label{
+    font-family:'Courier New',monospace;
+    font-size:11px;
+    color:var(--ink-soft);
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    margin-bottom:6px;
+  }
+
+  .card{
+    background:var(--stone);
+    border:1px solid var(--stone-border);
+    border-radius:14px;
+    box-shadow:var(--card-shadow);
+    padding:28px 26px 26px;
+    animation:rise .35s ease both;
+  }
+  @keyframes rise{
+    from{opacity:0; transform:translateY(8px);}
+    to{opacity:1; transform:translateY(0);}
+  }
+  .question{
+    font-family: Georgia, 'Iowan Old Style', serif;
+    font-size:21px;
+    font-weight:600;
+    line-height:1.35;
+    margin:0 0 6px;
+  }
+  .hint{
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size:13.5px;
+    color:var(--ink-soft);
+    margin:0 0 20px;
+  }
+  .options{
+    display:flex;
+    flex-direction:column;
+    gap:10px;
+  }
+  .opt{
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    text-align:left;
+    background:#FBFCFB;
+    border:1.5px solid var(--stone-border);
+    border-radius:10px;
+    padding:13px 16px;
+    font-size:15px;
+    color:var(--ink);
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease, transform .1s ease;
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .opt:hover{border-color:var(--path-done); background:#F3F7F4;}
+  .opt:active{transform:scale(0.995);}
+  .opt.selected{
+    border-color:var(--path-active);
+    background:#EEF5F1;
+    font-weight:600;
+  }
+  .opt:focus-visible{outline:2px solid var(--path-active); outline-offset:2px;}
+  .opt .mark{
+    width:16px;height:16px;border-radius:50%;
+    border:1.5px solid var(--stone-border);
+    flex:none;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .opt.selected .mark{border-color:var(--path-active); background:var(--path-active);}
+  .opt.selected .mark::after{content:'';width:6px;height:6px;border-radius:50%;background:#fff;}
+  .opt.checkbox .mark{border-radius:4px;}
+
+  textarea{
+    width:100%;
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size:14.5px;
+    border:1.5px solid var(--stone-border);
+    border-radius:10px;
+    padding:12px 14px;
+    resize:vertical;
+    min-height:90px;
+    background:#FBFCFB;
+    color:var(--ink);
+  }
+  textarea:focus-visible{outline:2px solid var(--path-active); outline-offset:1px;}
+  .starter{
+    font-family: Georgia, 'Iowan Old Style', serif;
+    font-style:italic;
+    font-size:16px;
+    color:var(--ink);
+    margin-bottom:8px;
+  }
+
+  .datetime-row{
+    margin-bottom:16px;
+  }
+  .datetime-row:last-child{margin-bottom:0;}
+  .yn-row{
+    display:flex;
+    gap:10px;
+  }
+  .opt.yn{
+    flex:1;
+    justify-content:center;
+    padding:11px 14px;
+  }
+  .datetime-row input[type="date"]{
+    width:100%;
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size:14.5px;
+    border:1.5px solid var(--stone-border);
+    border-radius:10px;
+    padding:10px 13px;
+    background:#FBFCFB;
+    color:var(--ink);
+  }
+  .datetime-row input[type="date"]:focus-visible{
+    outline:2px solid var(--path-active); outline-offset:1px;
+  }
+  .field-label{
+    display:block;
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size:12.5px;
+    font-weight:600;
+    color:var(--ink-soft);
+    text-transform:uppercase;
+    letter-spacing:0.04em;
+    margin-bottom:6px;
+  }
+  .datetime-row input[type="text"], .datetime-row select{
+    width:100%;
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size:14.5px;
+    border:1.5px solid var(--stone-border);
+    border-radius:10px;
+    padding:11px 13px;
+    background:#FBFCFB;
+    color:var(--ink);
+  }
+  .datetime-row input[type="text"]:focus-visible, .datetime-row select:focus-visible{
+    outline:2px solid var(--path-active); outline-offset:1px;
+  }
+
+  .nav{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-top:22px;
+  }
+  button.primary, button.ghost, button.skip{
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size:14px;
+    border-radius:9px;
+    padding:10px 18px;
+    cursor:pointer;
+    border:none;
+  }
+  button.primary{
+    background:var(--path-active);
+    color:#fff;
+    font-weight:600;
+  }
+  button.primary:hover{background:#325750;}
+  button.primary:disabled{background:#C6D1CB; cursor:not-allowed;}
+  button.ghost{
+    background:transparent;
+    color:var(--ink-soft);
+    border:1.5px solid var(--stone-border);
+  }
+  button.ghost:hover{border-color:var(--path-done); color:var(--ink);}
+  button.skip{
+    background:none;
+    color:var(--ink-soft);
+    text-decoration:underline;
+    padding:10px 4px;
+  }
+
+  /* results */
+  .result-head{
+    display:flex; align-items:baseline; gap:10px; margin-bottom:4px;
+  }
+  .summary-box{
+    background:#FBFCFB;
+    border:1.5px dashed var(--stone-border);
+    border-radius:12px;
+    padding:18px 18px;
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size:14.5px;
+    line-height:1.6;
+    color:var(--ink);
+    margin:16px 0 8px;
+    white-space:pre-wrap;
+  }
+  .copy-row{
+    display:flex; justify-content:flex-end; gap:8px; margin-bottom:22px;
+  }
+  .polish-note{
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size:12.5px;
+    color:var(--ink-soft);
+    font-style:italic;
+    margin:0 0 12px;
+  }
+  .copy-row button{
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size:13px;
+    background:var(--amber);
+    color:#fff;
+    border:none;
+    border-radius:8px;
+    padding:8px 14px;
+    cursor:pointer;
+    font-weight:600;
+  }
+  .copy-row button:hover{background:var(--amber-deep);}
+  .copy-row button.copied{background:var(--path-done);}
+
+  .resources h3{
+    font-family: Georgia, serif;
+    font-size:15px;
+    letter-spacing:0.02em;
+    text-transform:uppercase;
+    color:var(--ink-soft);
+    margin:0 0 12px;
+  }
+  .res-list{
+    display:flex; flex-direction:column; gap:10px;
+  }
+  .res{
+    display:block;
+    border:1.5px solid var(--stone-border);
+    border-radius:10px;
+    padding:13px 15px;
+    text-decoration:none;
+    color:var(--ink);
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .res:hover{border-color:var(--path-active); background:#F3F7F4;}
+  .res .res-title{font-weight:700; font-size:14.5px; display:flex; align-items:center; gap:6px;}
+  .res .res-title .arrow{color:var(--path-active); font-size:13px;}
+  .res .res-desc{font-size:13px; color:var(--ink-soft); margin-top:3px; line-height:1.45;}
+
+  .impact-flag{
+    display:inline-block;
+    background:#F7EBDA;
+    color:var(--amber-deep);
+    border:1px solid #E7CB9E;
+    border-radius:20px;
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size:12.5px;
+    font-weight:600;
+    padding:4px 12px;
+    margin:2px 0 16px;
+  }
+
+  .restart-row{margin-top:26px; text-align:center;}
+  .restart-row button{
+    background:none; border:none; color:var(--ink-soft);
+    font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif;
+    font-size:13px; text-decoration:underline; cursor:pointer;
+  }
+
+  @media (max-width:480px){
+    h1{font-size:26px;}
+    .card{padding:22px 18px 20px;}
+    .question{font-size:18px;}
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="masthead">
+    <p class="eyebrow">Tech Triage</p>
+    <h1>Something broke, idk</h1>
+    <p class="sub">Answer a few plain questions about what you're seeing. At the end you'll get a clear description you can hand to support, plus the right tools to capture evidence.</p>
+  </div>
+
+  <div class="trail" id="trail"></div>
+
+  <div id="stage"></div>
+</div>
+
+<script>
+const LINKS = {
+  browserCheck: {
+    url: "https://www.whatismybrowser.com/",
+    title: "Check exactly what browser & version you're on",
+    desc: "Open this page — it reads your browser automatically and shows the browser name, version, and operating system. No typing required. Screenshot it or copy the details for support."
+  },
+  loomDesktop: {
+    url: "https://www.loom.com/community/how-to-record-your-first-video",
+    title: "Record a Loom of the problem (computer)",
+    desc: "A short guide to recording your screen and narrating what's happening, so support can see the exact issue instead of guessing from a description."
+  },
+  loomIOS: {
+    url: "https://support.atlassian.com/loom/docs/record-with-loom-for-ios/",
+    title: "Record a Loom of the problem (iPhone / iPad)",
+    desc: "Step-by-step instructions for screen-recording on iOS using the Loom app."
+  },
+  loomAndroid: {
+    url: "https://support.atlassian.com/loom/docs/record-with-loom-for-android/",
+    title: "Record a Loom of the problem (Android)",
+    desc: "Step-by-step instructions for screen-recording on an Android phone or tablet using the Loom app."
+  },
+  jamSetup: {
+    url: "https://jam.dev/docs",
+    title: "Create a free Jam.dev account & test there",
+    desc: "Jam is a browser tool built for exactly this: click record, do the thing that's broken, and it automatically captures a video plus the technical details (browser, device, error logs) support needs — no jargon required on your end."
+  },
+  jamBugReport: {
+    url: "https://jam.dev/blog/how-to-write-a-bug-report/",
+    title: "See what makes a good bug report",
+    desc: "A quick guide on what details are actually useful to include when something's broken, in plain language."
+  }
+};
+
+const TIMEZONE_OPTIONS = [
+  "Eastern Time (US & Canada)",
+  "Central Time (US & Canada)",
+  "Mountain Time (US & Canada)",
+  "Pacific Time (US & Canada)",
+  "Alaska Time",
+  "Hawaii Time",
+  "UTC / GMT"
+];
+
+// Best-effort guess at a friendly time zone label from the browser's own IANA zone,
+// just to pre-fill the dropdown — the person can always change it.
+function guessTimezoneLabel(){
+  try{
+    const iana = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const map = {
+      "America/New_York": "Eastern Time (US & Canada)",
+      "America/Chicago": "Central Time (US & Canada)",
+      "America/Denver": "Mountain Time (US & Canada)",
+      "America/Los_Angeles": "Pacific Time (US & Canada)",
+      "America/Anchorage": "Alaska Time",
+      "Pacific/Honolulu": "Hawaii Time",
+      "UTC": "UTC / GMT",
+      "Etc/UTC": "UTC / GMT"
+    };
+    return map[iana] || null;
+  } catch(e){
+    return null;
+  }
+}
+
+const state = {
+  step: 0,
+  answers: {}
+};
+
+// ---- question flow definition ----
+// each question can have a `skip(answers)` returning true to bypass it
+const questions = [
+  {
+    id: "summary",
+    type: "text",
+    q: "Finish this sentence",
+    starter: "What happened was: ",
+    hint: "Tell it like you'd tell a friend — no need for technical terms. A sentence or two is plenty.",
+    placeholder: "I was trying to upload a photo and the page just went white."
+  },
+  {
+    id: "goal",
+    type: "text",
+    q: "Finish this sentence",
+    starter: "What I'm trying to accomplish is: ",
+    hint: "What were you actually trying to get done? This helps support suggest a workaround, even before the bug itself is fixed.",
+    placeholder: "getting a signed copy of this contract sent back to my client today."
+  },
+  {
+    id: "devices",
+    type: "multi",
+    q: "Which devices is this happening on?",
+    hint: "Select every device where you've seen it. If you've only tried one so far, that's fine too.",
+    options: [
+      "A laptop or desktop computer",
+      "A tablet",
+      "A phone"
+    ]
+  },
+  {
+    id: "mobileOS",
+    type: "single",
+    q: "Are those mobile devices Apple or Android?",
+    hint: "This just changes which instructions we point you to at the end.",
+    skip: a => !(a.devices || []).some(d => d === "A tablet" || d === "A phone"),
+    options: [
+      "Apple (iPhone / iPad)",
+      "Android",
+      "A mix of both"
+    ]
+  },
+  {
+    id: "where",
+    type: "single",
+    q: "Where is the problem happening?",
+    hint: "Pick the closest match — it's fine to guess.",
+    options: [
+      "In a website, inside a browser (Chrome, Safari, Edge, Firefox, etc.)",
+      "In an app I installed (not a website)",
+      "I'm honestly not sure"
+    ]
+  },
+  {
+    id: "problemType",
+    type: "single",
+    q: "Which of these sounds most like what's happening?",
+    hint: "Choose whichever is closest — you've already told us the details above.",
+    options: [
+      "Something used to work, and now it doesn't",
+      "I can't figure out how to do something / can't find a feature",
+      "Something on the screen looks wrong — cut off, garbled, or missing",
+      "I got an error message, warning, or red text I don't understand",
+      "It's very slow, frozen, or keeps closing on its own"
+    ]
+  },
+  {
+    id: "frequency",
+    type: "single",
+    q: "How often does this happen?",
+    hint: "This helps support know whether it's worth digging into right away.",
+    options: [
+      "Every single time I try",
+      "Only sometimes — it comes and goes",
+      "It just started recently, out of nowhere",
+      "Only in one specific place (one site, one app, one screen)"
+    ]
+  },
+  {
+    id: "whenHappened",
+    type: "datetime",
+    q: "When did this happen?",
+    hint: "Approximate time is fine — this helps support match it up with system logs. Skip if you're not sure.",
+    optional: true
+  },
+  {
+    id: "blocked",
+    type: "single",
+    q: "Is this stopping you from getting work done?",
+    hint: "Be honest — this helps everyone understand how urgent it is.",
+    options: [
+      "Yes, I'm completely stuck",
+      "It's slowing me down, but I can still work around it",
+      "No, it's just annoying / cosmetic"
+    ]
+  },
+  {
+    id: "blockedDetail",
+    type: "text",
+    q: "Finish this sentence",
+    starter: "This is stopping me from: ",
+    hint: "Name the actual task or outcome — e.g. \"sending invoices to clients\" or \"submitting my timesheet.\"",
+    placeholder: "finishing my expense report before the deadline.",
+    skip: a => a.blocked !== "Yes, I'm completely stuck" && a.blocked !== "It's slowing me down, but I can still work around it"
+  },
+  {
+    id: "tried",
+    type: "text",
+    q: "Finish this sentence",
+    starter: "So far, I've tried: ",
+    hint: "List anything you've already attempted — restarting, updating, trying another browser, etc. If you haven't tried anything, just say so.",
+    placeholder: "restarting my laptop and reloading the page twice."
+  },
+  {
+    id: "errorText",
+    type: "text",
+    q: "Finish this sentence",
+    starter: "The issue I ran into was: ",
+    hint: "If you saw exact error text, paste or type it here word-for-word — even a fragment helps a lot. Otherwise, skip this.",
+    placeholder: "Error 403: session expired",
+    optional: true
+  }
+];
+
+function visibleQuestions(){
+  return questions.filter(q => !q.skip || !q.skip(state.answers));
+}
+
+function render(){
+  const vis = visibleQuestions();
+  renderTrail(vis.length);
+  const stage = document.getElementById('stage');
+
+  if(state.step >= vis.length){
+    renderResult();
+    return;
+  }
+
+  const q = vis[state.step];
+  const current = state.answers[q.id];
+
+  let optsHtml = "";
+  if(q.type === "single"){
+    optsHtml = `<div class="options">` + q.options.map(opt => `
+      <button class="opt ${current===opt ? 'selected':''}" data-value="${escapeAttr(opt)}">
+        <span class="mark"></span>${opt}
+      </button>`).join("") + `</div>`;
+  } else if(q.type === "multi"){
+    const sel = current || [];
+    optsHtml = `<div class="options">` + q.options.map(opt => `
+      <button class="opt checkbox ${sel.includes(opt) ? 'selected':''}" data-value="${escapeAttr(opt)}">
+        <span class="mark"></span>${opt}
+      </button>`).join("") + `</div>`;
+  } else if(q.type === "text"){
+    optsHtml = (q.starter ? `<div class="starter">${escapeHtml(q.starter)}</div>` : "") +
+      `<textarea id="freeText" maxlength="${MAX_INPUT_LENGTH}" placeholder="${q.placeholder ? escapeAttr(q.placeholder) : ''}">${current ? escapeHtml(current) : ""}</textarea>`;
+  } else if(q.type === "datetime"){
+    const val = current || {};
+    const isOtherTz = val.timezone && !TIMEZONE_OPTIONS.includes(val.timezone);
+    optsHtml = `
+      <div class="datetime-row">
+        <label class="field-label">Did this happen today?</label>
+        <div class="yn-row">
+          <button class="opt yn ${val.dateChoice==='today' ? 'selected':''}" data-yn="today">
+            <span class="mark"></span>Yes, today
+          </button>
+          <button class="opt yn ${val.dateChoice==='other' ? 'selected':''}" data-yn="other">
+            <span class="mark"></span>No, another day
+          </button>
+        </div>
+        <input type="date" id="dateInput" value="${val.date ? escapeAttr(val.date) : ''}" style="display:${val.dateChoice==='other' ? 'block':'none'}; margin-top:10px;">
+      </div>
+      <div class="datetime-row">
+        <label class="field-label" for="timeInput">Approximate time</label>
+        <input type="text" id="timeInput" maxlength="40" placeholder="e.g. 3:15 PM, or &quot;this morning&quot;" value="${val.time ? escapeAttr(val.time) : ''}">
+      </div>
+      <div class="datetime-row">
+        <label class="field-label" for="tzSelect">Time zone</label>
+        <select id="tzSelect">
+          <option value="">Select a time zone…</option>
+          ${TIMEZONE_OPTIONS.map(tz => `<option value="${escapeAttr(tz)}" ${val.timezone===tz ? 'selected':''}>${tz}</option>`).join("")}
+          <option value="Other" ${isOtherTz ? 'selected':''}>Other (I'll type it in)</option>
+        </select>
+        <input type="text" id="tzOther" maxlength="60" placeholder="Type your time zone" value="${isOtherTz ? escapeAttr(val.timezone) : ''}" style="display:${isOtherTz ? 'block':'none'}; margin-top:8px;">
+      </div>
+    `;
+  }
+
+  const isRequiredText = q.type === "text" && !q.optional;
+
+  stage.innerHTML = `
+    <div class="step-label">Step ${state.step+1} of ${vis.length}</div>
+    <div class="card">
+      <p class="question">${q.q}</p>
+      <p class="hint">${q.hint || ""}</p>
+      ${optsHtml}
+      <div class="nav">
+        <button class="ghost" id="backBtn" ${state.step===0 ? 'style="visibility:hidden"' : ''}>Back</button>
+        <div style="display:flex; gap:14px; align-items:center;">
+          ${q.optional ? `<button class="skip" id="skipBtn">Skip</button>` : ""}
+          <button class="primary" id="nextBtn" ${needsSelection(q) ? 'disabled' : ''}>${state.step===vis.length-1 ? "See my summary" : "Next"}</button>
+        </div>
+      </div>
+    </div>
+  `;
+
+  function needsSelection(q){
+    if(q.optional) return false;
+    const a = state.answers[q.id];
+    if(q.type === "multi") return !a || a.length===0;
+    if(q.type === "text") return !a || !sanitizeInput(a).trim();
+    return !a;
+  }
+
+  // wire up option buttons (single/multi questions only — datetime's yes/no toggle is wired separately)
+  stage.querySelectorAll('.opt[data-value]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const val = btn.getAttribute('data-value');
+      if(q.type === "single"){
+        state.answers[q.id] = val;
+      } else if(q.type === "multi"){
+        const arr = state.answers[q.id] ? [...state.answers[q.id]] : [];
+        if(val === "Nothing yet"){
+          state.answers[q.id] = arr.includes(val) ? [] : [val];
+        } else {
+          const idx = arr.indexOf(val);
+          if(idx>-1) arr.splice(idx,1); else arr.push(val);
+          const cleaned = arr.filter(v => v !== "Nothing yet");
+          state.answers[q.id] = cleaned;
+        }
+      }
+      render();
+    });
+  });
+
+  const textEl = document.getElementById('freeText');
+  if(textEl){
+    textEl.addEventListener('input', () => {
+      const raw = textEl.value;
+      const cleaned = sanitizeInput(raw);
+      state.answers[q.id] = cleaned;
+      // if sanitizing changed anything (stripped control/invisible chars or hit the cap),
+      // reflect that back into the field so what's stored always matches what's shown
+      if(cleaned !== raw){
+        const pos = textEl.selectionStart;
+        textEl.value = cleaned;
+        const newPos = Math.min(pos, cleaned.length);
+        textEl.setSelectionRange(newPos, newPos);
+      }
+      // toggle next button live for required text questions
+      const nextBtn = document.getElementById('nextBtn');
+      if(nextBtn && isRequiredText){
+        nextBtn.disabled = !cleaned.trim();
+      }
+    });
+  }
+
+  if(q.type === "datetime"){
+    const timeInput = document.getElementById('timeInput');
+    const tzSelect = document.getElementById('tzSelect');
+    const tzOther = document.getElementById('tzOther');
+    const dateInput = document.getElementById('dateInput');
+    const ynBtns = stage.querySelectorAll('.opt.yn');
+
+    function saveDatetime(){
+      const tzVal = tzSelect.value === 'Other' ? tzOther.value : tzSelect.value;
+      const existing = state.answers[q.id] || {};
+      state.answers[q.id] = {
+        dateChoice: existing.dateChoice || "",
+        date: sanitizeInput(dateInput.value),
+        time: sanitizeInput(timeInput.value),
+        timezone: sanitizeInput(tzVal)
+      };
+    }
+
+    // suggest the device's own time zone as a starting point, if we don't already have an answer
+    if(!current || (!current.time && !current.timezone)){
+      const guess = guessTimezoneLabel();
+      if(guess){ tzSelect.value = guess; }
+    }
+
+    ynBtns.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const choice = btn.getAttribute('data-yn');
+        const existing = state.answers[q.id] || {};
+        existing.dateChoice = choice;
+        if(choice === 'today'){ existing.date = ""; dateInput.value = ""; }
+        state.answers[q.id] = existing;
+        render();
+      });
+    });
+
+    dateInput.addEventListener('input', saveDatetime);
+    timeInput.addEventListener('input', saveDatetime);
+    tzSelect.addEventListener('change', () => {
+      tzOther.style.display = tzSelect.value === 'Other' ? 'block' : 'none';
+      if(tzSelect.value === 'Other'){ tzOther.focus(); }
+      saveDatetime();
+    });
+    tzOther.addEventListener('input', saveDatetime);
+  }
+
+  const nextBtn = document.getElementById('nextBtn');
+  if(nextBtn){
+    nextBtn.addEventListener('click', () => {
+      state.step++;
+      render();
+    });
+  }
+  const skipBtn = document.getElementById('skipBtn');
+  if(skipBtn){
+    skipBtn.addEventListener('click', () => {
+      delete state.answers[q.id];
+      state.step++;
+      render();
+    });
+  }
+  const backBtn = document.getElementById('backBtn');
+  if(backBtn){
+    backBtn.addEventListener('click', () => {
+      state.step = Math.max(0, state.step - 1);
+      render();
+    });
+  }
+}
+
+function renderTrail(total){
+  const trail = document.getElementById('trail');
+  let html = "";
+  for(let i=0;i<total;i++){
+    const done = i < state.step;
+    const active = i === state.step;
+    html += `<div class="stone ${done?'done':''} ${active?'active':''}"></div>`;
+    if(i < total-1){
+      html += `<div class="trail-seg ${done?'done':''} ${active?'active':''}"><div class="fill"></div></div>`;
+    }
+  }
+  trail.innerHTML = html;
+}
+
+// --- Security: sanitize & escape all user-supplied text before it ever touches the DOM ---
+
+// Escapes text for safe insertion as HTML content or inside an HTML attribute.
+// Covers all five characters that matter for HTML/attribute injection, not just <>&.
+function escapeHtml(s){
+  return String(s == null ? "" : s)
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#39;');
+}
+// Attribute context needs the same escaping as HTML content, so reuse escapeHtml.
+function escapeAttr(s){ return escapeHtml(s); }
+
+const MAX_INPUT_LENGTH = 600;
+
+// Strips characters that have no legitimate use in a plain-language sentence but are
+// commonly abused for attacks: ASCII control codes (can trigger terminal/log escape-sequence
+// injection if this text is later pasted into a terminal, log viewer, or shell), and
+// zero-width / bidi-override Unicode characters (used for text spoofing / homograph tricks).
+// Also hard-caps length so no single field can carry an oversized payload.
+function sanitizeInput(str){
+  if(typeof str !== 'string') return '';
+  return str
+    .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')      // control chars (keep \t \n)
+    .replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/g, '')     // zero-width & bidi-override chars
+    .slice(0, MAX_INPUT_LENGTH);
+}
+
+function starterFor(id){
+  const q = questions.find(q => q.id === id);
+  return q && q.starter ? q.starter : "";
+}
+function lowerFirst(s){
+  return s.charAt(0).toLowerCase() + s.slice(1);
+}
+
+// Ensures a fragment ends with terminal punctuation without doubling up
+// if the person already typed their own period, question mark, etc.
+function endSentence(s){
+  const trimmed = (s || "").trim();
+  if(!trimmed) return trimmed;
+  return /[.!?]$/.test(trimmed) ? trimmed : trimmed + ".";
+}
+
+// Formats a YYYY-MM-DD date input value as a friendly date, parsed as local
+// (not UTC) so the displayed day never shifts by one due to timezone conversion.
+function formatDateFriendly(dateStr){
+  if(!dateStr) return "";
+  const parts = dateStr.split("-").map(Number);
+  if(parts.length !== 3 || parts.some(n => !n && n !== 0)) return dateStr;
+  const [y, m, d] = parts;
+  const dt = new Date(y, m - 1, d);
+  if(isNaN(dt.getTime())) return dateStr;
+  return dt.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+}
+
+function buildSummary(){
+  const a = state.answers;
+
+  const deviceLine = (a.devices && a.devices.length)
+    ? a.devices.map(lowerFirst).join(" and ") + (a.mobileOS ? ` (${lowerFirst(a.mobileOS)})` : "")
+    : "a device I didn't specify";
+
+  const whereMap = {
+    "In a website, inside a browser (Chrome, Safari, Edge, Firefox, etc.)": "a website in my browser",
+    "In an app I installed (not a website)": "an app I installed",
+    "I'm honestly not sure": "somewhere I'm not 100% sure how to categorize"
+  };
+  const typeMap = {
+    "Something used to work, and now it doesn't": "something that used to work has stopped working",
+    "I can't figure out how to do something / can't find a feature": "I can't figure out how to do something, or can't find a feature I need",
+    "Something on the screen looks wrong — cut off, garbled, or missing": "something on the screen looks wrong — cut off, garbled, or missing",
+    "I got an error message, warning, or red text I don't understand": "I got an error message or warning I don't understand",
+    "It's very slow, frozen, or keeps closing on its own": "it's very slow, frozen, or keeps closing on its own"
+  };
+  const freqMap = {
+    "Every single time I try": "every single time I try",
+    "Only sometimes — it comes and goes": "only sometimes — it comes and goes",
+    "It just started recently, out of nowhere": "it just started recently, out of nowhere",
+    "Only in one specific place (one site, one app, one screen)": "only in one specific place (one site, one app, or one screen)"
+  };
+  const blockedMap = {
+    "Yes, I'm completely stuck": "This is completely blocking my work",
+    "It's slowing me down, but I can still work around it": "This is slowing me down, though I have a workaround",
+    "No, it's just annoying / cosmetic": "This isn't blocking my work — it's just annoying or cosmetic"
+  };
+
+  let paraParts = [];
+
+  const summaryClean = sanitizeInput(a.summary || "").trim();
+  const goalClean = sanitizeInput(a.goal || "").trim();
+  const blockedDetailClean = sanitizeInput(a.blockedDetail || "").trim();
+  const triedClean = sanitizeInput(a.tried || "").trim();
+  const errorTextClean = sanitizeInput(a.errorText || "").trim();
+  const when = a.whenHappened || {};
+  const timeClean = sanitizeInput(when.time || "").trim();
+  const tzClean = sanitizeInput(when.timezone || "").trim();
+  let dayPart = "";
+  if(when.dateChoice === "today"){
+    dayPart = "today";
+  } else if(when.dateChoice === "other"){
+    const dateClean = sanitizeInput(when.date || "").trim();
+    if(dateClean) dayPart = `on ${formatDateFriendly(dateClean)}`;
+  }
+
+  // 1. What happened, in the person's own words
+  if(summaryClean){
+    paraParts.push(`${starterFor('summary')}${endSentence(summaryClean)}`);
+  }
+
+  // 2. What they were actually trying to accomplish
+  if(goalClean){
+    paraParts.push(`${starterFor('goal')}${endSentence(goalClean)}`);
+  }
+
+  // 3. Where/what/how-often, folded into two connected sentences
+  paraParts.push(
+    `I'm running into this on ${deviceLine}, in ${whereMap[a.where] || "a spot I'm not sure how to describe"}. ` +
+    `The main issue is that ${typeMap[a.problemType] || "something isn't right"}, and it happens ${freqMap[a.frequency] || "at a frequency I'm not sure how to describe"}.`
+  );
+
+  // 4. When it happened, if given — combine day/time/timezone into one natural sentence
+  if(dayPart || timeClean){
+    let whenSentence = "This happened";
+    if(dayPart) whenSentence += ` ${dayPart}`;
+    if(timeClean) whenSentence += ` around ${timeClean}`;
+    if(tzClean) whenSentence += ` (${tzClean})`;
+    paraParts.push(endSentence(whenSentence));
+  } else if(tzClean){
+    paraParts.push(`I'm in the ${tzClean} time zone.`);
+  }
+
+  // 5. Impact on their work, if flagged
+  if(a.blocked){
+    let impactLine = blockedMap[a.blocked] || "";
+    if(blockedDetailClean){
+      impactLine += `, which is stopping me from ${endSentence(blockedDetailClean)}`;
+    } else {
+      impactLine = endSentence(impactLine);
+    }
+    paraParts.push(endSentence(impactLine));
+  }
+
+  // 6. What they've already tried
+  if(triedClean){
+    paraParts.push(`${starterFor('tried')}${endSentence(triedClean)}`);
+  } else {
+    paraParts.push(`I haven't tried anything to fix it yet.`);
+  }
+
+  // 7. Exact error text, if any
+  if(errorTextClean){
+    paraParts.push(`${starterFor('errorText')}"${errorTextClean}".`);
+  }
+
+  return paraParts.join(" ").trim();
+}
+
+function relevantResources(){
+  const a = state.answers;
+  const list = [];
+  const isBrowser = a.where === "In a website, inside a browser (Chrome, Safari, Edge, Firefox, etc.)" || a.where === "I'm honestly not sure";
+  const devices = a.devices || [];
+  const isMobile = devices.includes("A tablet") || devices.includes("A phone");
+  const isDesktop = devices.includes("A laptop or desktop computer") || devices.length === 0;
+
+  if(isBrowser){
+    list.push(LINKS.browserCheck);
+  }
+  if(isDesktop){
+    list.push(LINKS.loomDesktop);
+  }
+  if(isMobile){
+    if(a.mobileOS === "Apple (iPhone / iPad)") list.push(LINKS.loomIOS);
+    else if(a.mobileOS === "Android") list.push(LINKS.loomAndroid);
+    else { list.push(LINKS.loomIOS); list.push(LINKS.loomAndroid); }
+  }
+  if(isBrowser){
+    list.push(LINKS.jamSetup);
+    list.push(LINKS.jamBugReport);
+  }
+  return list;
+}
+
+function renderResult(){
+  const stage = document.getElementById('stage');
+  const para = buildSummary();
+  const resources = relevantResources();
+  const a = state.answers;
+
+  const impactFlag = a.blocked === "Yes, I'm completely stuck"
+    ? `<div class="impact-flag">⚠ Fully blocked from working</div>`
+    : (a.blocked === "It's slowing me down, but I can still work around it"
+      ? `<div class="impact-flag">Slowed down, workaround in place</div>`
+      : "");
+
+  stage.innerHTML = `
+    <div class="card">
+      <div class="result-head"><p class="question" style="margin-bottom:0;">Here's your plain-language summary</p></div>
+      ${impactFlag}
+      <p class="hint">Copy this and paste it wherever you're asking for help — it already says what support needs to know.</p>
+      <div class="summary-box" id="summaryBox">${escapeHtml(para)}</div>
+      <p class="polish-note">You can also paste this into a text editor (Notes, Docs, Word, etc.) if you'd like to tweak the wording before sending it.</p>
+      <div class="copy-row">
+        <button id="copyBtn">Copy summary</button>
+      </div>
+
+      <div class="resources">
+        <h3>Before you send it — grab this evidence</h3>
+        <div class="res-list">
+          ${resources.map(r => `
+            <a class="res" href="${r.url}" target="_blank" rel="noopener noreferrer">
+              <div class="res-title">${r.title} <span class="arrow">→</span></div>
+              <div class="res-desc">${r.desc}</div>
+            </a>
+          `).join("")}
+        </div>
+      </div>
+
+      <div class="restart-row">
+        <button id="restartBtn">Start over</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('copyBtn').addEventListener('click', () => {
+    navigator.clipboard.writeText(para).then(() => {
+      const btn = document.getElementById('copyBtn');
+      btn.textContent = "Copied ✓";
+      btn.classList.add('copied');
+      setTimeout(() => { btn.textContent = "Copy summary"; btn.classList.remove('copied'); }, 1800);
+    });
+  });
+
+  document.getElementById('restartBtn').addEventListener('click', () => {
+    state.step = 0;
+    state.answers = {};
+    render();
+  });
+}
+
+render();
+</script>
+</body>
+</html>
